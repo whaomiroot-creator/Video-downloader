@@ -29,44 +29,28 @@ def sanitize_filename(name: str) -> str:
     name = re.sub(r'[<>:"/\\|?*]', '', name)
     return name.replace(' ', '_').strip()[:100] or "video"
 
-# OPÇÕES DE EVASÃO (O segredo para o Render não ser bloqueado)
+# OPÇÕES DE EVASÃO (Essencial para IP do Render não ser bloqueado)
 def get_base_ydl_opts() -> Dict[str, Any]:
     return {
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
         'no_color': True,
-        # Força o uso de formatos que o YouTube libera mais fácil para servidores
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios'],
+                'player_client': ['android', 'web'],
                 'skip': ['dash', 'hls']
             }
         },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     }
 
-def get_download_opts(format_type: str, quality: str) -> Dict[str, Any]:
-    opts = get_base_ydl_opts()
-    unique_id = uuid.uuid4().hex[:8]
-    opts['outtmpl'] = str(TEMP_DIR / f"dl_{unique_id}_%(id)s.%(ext)s")
-    
-    if format_type == "mp3":
-        opts['format'] = 'bestaudio/best'
-        opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
-    else:
-        # Tenta baixar a melhor qualidade disponível que seja compatível
-        opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-        opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
-    
-    return opts
-
-# API MODELS
+# MODELOS COMPATÍVEIS COM PYDANTIC 1.10
 class VideoInfoRequest(BaseModel):
-    url: HttpUrl
+    url: str # Trocado para str para maior flexibilidade na v1
 
 class VideoDownloadRequest(BaseModel):
-    url: HttpUrl
+    url: str
     format_type: str = "mp4"
     quality: str = "best"
 
@@ -90,10 +74,11 @@ async def health():
 
 @app.post("/api/info")
 async def get_info(request: VideoInfoRequest):
-    # Tenta extrair info com várias tentativas se necessário
     with yt_dlp.YoutubeDL(get_base_ydl_opts()) as ydl:
         try:
-            info = ydl.extract_info(str(request.url), download=False)
+            # Força o link a ser string e remove espaços
+            clean_url = request.url.strip()
+            info = ydl.extract_info(clean_url, download=False)
             return {
                 "title": info.get('title', 'Video'),
                 "duration_seconds": int(info.get('duration') or 0),
@@ -103,43 +88,55 @@ async def get_info(request: VideoInfoRequest):
             }
         except Exception as e:
             logger.error(f"Erro YT-DLP: {e}")
-            raise HTTPException(status_code=400, detail="O YouTube bloqueou o acesso deste servidor. Tente outro link.")
+            # Erro 400 que você viu na imagem acontece aqui
+            raise HTTPException(status_code=400, detail="O YouTube bloqueou a análise. Tente novamente em instantes.")
 
 @app.post("/api/download")
 async def download(request: VideoDownloadRequest, bg: BackgroundTasks):
-    opts = get_download_opts(request.format_type, request.quality)
+    unique_id = uuid.uuid4().hex[:8]
+    opts = get_base_ydl_opts()
+    opts['outtmpl'] = str(TEMP_DIR / f"dl_{unique_id}_%(id)s.%(ext)s")
+    
+    if request.format_type == "mp3":
+        opts['format'] = 'bestaudio/best'
+        opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
+    else:
+        opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+        opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+
     with yt_dlp.YoutubeDL(opts) as ydl:
         try:
-            info = ydl.extract_info(str(request.url), download=True)
+            info = ydl.extract_info(request.url.strip(), download=True)
             temp_file = Path(ydl.prepare_filename(info))
             
-            # Ajuste de extensão para MP3
             if request.format_type == "mp3":
                 temp_file = temp_file.with_suffix(".mp3")
 
             final_name = f"final_{uuid.uuid4().hex[:6]}{temp_file.suffix}"
             final_path = DOWNLOAD_DIR / final_name
             
-            # No Render, precisamos garantir que o arquivo existe antes de mover
             if temp_file.exists():
                 shutil.move(str(temp_file), str(final_path))
             else:
-                # Fallback: procura o arquivo mais recente no temp
-                files = sorted(TEMP_DIR.glob("*"), key=os.path.getmtime, reverse=True)
-                if files: shutil.move(str(files[0]), str(final_path))
-                else: raise Exception("Arquivo não gerado.")
+                # Tenta localizar o arquivo se o yt-dlp mudou o nome
+                possible_files = list(TEMP_DIR.glob(f"dl_{unique_id}*"))
+                if possible_files:
+                    shutil.move(str(possible_files[0]), str(final_path))
+                else:
+                    raise Exception("Falha ao localizar arquivo baixado.")
 
             return {
                 "status": "success",
                 "download_url": f"/api/file/{final_name}?title={sanitize_filename(info.get('title','video'))}"
             }
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Erro Download: {e}")
+            raise HTTPException(status_code=500, detail="Erro ao processar o arquivo de vídeo.")
 
 @app.get("/api/file/{filename}")
 async def get_file(filename: str, title: Optional[str] = "video"):
     p = DOWNLOAD_DIR / filename
-    if not p.exists(): raise HTTPException(404, "Arquivo expirou.")
+    if not p.exists(): raise HTTPException(404, "Arquivo expirou ou não foi encontrado.")
     return FileResponse(p, media_type="application/octet-stream", filename=f"{title}{p.suffix}")
 
 if __name__ == "__main__":
