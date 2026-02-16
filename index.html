@@ -83,8 +83,8 @@
             <span class="text-xl font-extrabold tracking-tight">V-ENGINE</span>
         </div>
         <div id="api-status" class="px-4 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-bold flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-            VERIFICANDO API
+            <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+            <span id="status-text">VERIFICANDO API</span>
         </div>
     </nav>
 
@@ -149,7 +149,6 @@
 
         <div class="glass rounded-3xl p-6 mt-12 border-t-4 border-amber-500 relative overflow-hidden animate-[fadeIn_1s_ease-out]">
             <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-amber-500/10 blur-3xl rounded-full"></div>
-            
             <div class="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
                 <div class="flex items-center gap-4 text-center md:text-left">
                     <div class="bg-amber-500/20 p-4 rounded-2xl text-amber-500 text-3xl shadow-[0_0_15px_rgba(245,158,11,0.3)]">
@@ -160,7 +159,6 @@
                         <p class="text-slate-400">Gostou? Me pague um café para manter o servidor online! ☕️</p>
                     </div>
                 </div>
-                
                 <div class="flex flex-col items-center md:items-end gap-2">
                     <button onclick="copyPix()" class="bg-amber-500 hover:bg-amber-600 text-slate-900 px-8 py-3 rounded-xl font-black transition-all flex items-center gap-2 transform hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/20">
                         <i class="fa-solid fa-copy"></i> COPIAR PIX
@@ -173,18 +171,19 @@
         <div id="loading-screen" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center text-center p-6">
             <span class="loader-ring mb-6"></span>
             <h2 class="text-2xl font-bold mb-2">Processando...</h2>
-            <p class="text-slate-400 animate-pulse" id="loading-msg">Extraindo áudio e vídeo da plataforma</p>
+            <p class="text-slate-400 animate-pulse" id="loading-msg">Extraindo dados do servidor</p>
         </div>
 
         <div id="notif-container" class="fixed bottom-6 right-6 flex flex-col gap-3"></div>
-
     </main>
 
     <script>
-        const API_URL = 'http://127.0.0.1:8000/api';
+        // URL ATUALIZADA PARA O RENDER
+        const API_BASE = 'https://video-downloader-v3q0.onrender.com';
+        const API_URL = `${API_BASE}/api`;
+        
         let currentFormat = 'mp4';
 
-        // Função para Copiar PIX
         function copyPix() {
             const chave = "cefc4314-c221-4875-ad34-18c1033eaa4e";
             navigator.clipboard.writeText(chave).then(() => {
@@ -208,10 +207,12 @@
             try {
                 const res = await fetch(`${API_URL}/health`);
                 if(res.ok) {
-                    document.getElementById('api-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> API ONLINE';
+                    document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500";
+                    document.getElementById('status-text').innerText = "API ONLINE";
                 }
             } catch {
-                document.getElementById('api-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> API OFFLINE';
+                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-red-500";
+                document.getElementById('status-text').innerText = "API OFFLINE";
             }
         }
 
@@ -220,7 +221,6 @@
                 document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentFormat = btn.dataset.format;
-                
                 const qSelect = document.getElementById('quality-select');
                 if(currentFormat === 'mp3') {
                     qSelect.style.opacity = '0.5';
@@ -235,28 +235,22 @@
         document.getElementById('btn-info').onclick = async () => {
             const url = document.getElementById('video-url').value;
             if(!url) return notify("Cole uma URL primeiro", "error");
-
             document.getElementById('loading-screen').classList.remove('hidden');
-            
             try {
                 const res = await fetch(`${API_URL}/info`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({url})
                 });
-                
-                if(!res.ok) throw new Error("Link inválido ou não suportado");
-                
+                if(!res.ok) throw new Error("Vídeo não encontrado ou não suportado");
                 const data = await res.json();
-                
                 document.getElementById('v-thumb').src = data.thumbnail_url;
                 document.getElementById('v-title').innerText = data.title;
                 document.getElementById('v-uploader').innerText = data.uploader;
                 document.getElementById('v-duration').innerText = Math.floor(data.duration_seconds/60) + ' min';
-                
                 document.getElementById('video-card').classList.remove('hidden');
                 document.getElementById('btn-download').disabled = false;
-                notify("Vídeo analisado com sucesso!", "success");
+                notify("Vídeo analisado!", "success");
             } catch (err) {
                 notify(err.message, "error");
             } finally {
@@ -267,40 +261,32 @@
         document.getElementById('btn-download').onclick = async () => {
             const url = document.getElementById('video-url').value;
             const quality = document.getElementById('quality-select').value;
-            
             document.getElementById('loading-screen').classList.remove('hidden');
-            document.getElementById('loading-msg').innerText = "Fundindo áudio e vídeo... Isso pode levar um minuto.";
-
+            document.getElementById('loading-msg').innerText = "Processando mídia no servidor Render...";
             try {
                 const res = await fetch(`${API_URL}/download`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        url, 
-                        format_type: currentFormat,
-                        quality: quality
-                    })
+                    body: JSON.stringify({ url, format_type: currentFormat, quality: quality })
                 });
-
                 const data = await res.json();
-                if(!res.ok) throw new Error(data.detail || "Erro no download");
-
-                const finalDownloadUrl = `http://127.0.0.1:8000${data.download_url}`;
+                if(!res.ok) throw new Error(data.detail || "Erro no processamento");
                 
-                notify("Download concluído! Iniciando transferência...", "success");
+                // CONSTRUÇÃO DA URL FINAL USANDO O DOMÍNIO DO RENDER
+                const finalDownloadUrl = `${API_BASE}${data.download_url}`;
                 
+                notify("Pronto! O download vai começar.", "success");
                 const link = document.createElement('a');
                 link.href = finalDownloadUrl;
                 link.setAttribute('download', '');
                 document.body.appendChild(link);
                 link.click();
                 link.remove();
-
             } catch (err) {
                 notify(err.message, "error");
             } finally {
                 document.getElementById('loading-screen').classList.add('hidden');
-                document.getElementById('loading-msg').innerText = "Extraindo áudio e vídeo da plataforma";
+                document.getElementById('loading-msg').innerText = "Extraindo dados do servidor";
             }
         };
 
