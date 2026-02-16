@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-yt-dlp==2024.3.10
+yt-dlp>=2025.01.15
 python-multipart==0.0.6
 aiofiles==23.2.1
 pydantic==1.10.13
