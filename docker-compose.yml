@@ -1,0 +1,70 @@
+version: '3.9'
+
+services:
+  # Main API Service
+  api:
+    build: .
+    container_name: video-downloader-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DOWNLOAD_DIR=/app/downloads
+      - TEMP_DIR=/app/temp
+      - MAX_CONCURRENT_DOWNLOADS=3
+      - CLEANUP_INTERVAL_HOURS=1
+      - MAX_FILE_SIZE_GB=2
+      - API_TIMEOUT_SECONDS=300
+      - USE_PROXY=false
+      # - PROXY_URL=http://proxy.example.com:8080
+    volumes:
+      - ./downloads:/app/downloads
+      - ./temp:/app/temp
+    networks:
+      - video-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Uncomment para desenvolvimento com hot-reload
+    # command: python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+  
+  # OPCIONAL: Redis para produção (Celery + Caching)
+  redis:
+    image: redis:7-alpine
+    container_name: video-downloader-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - video-network
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    # Uncomment para produção
+    # environment:
+    #   - REDIS_PASSWORD=your-secure-password
+
+  # OPCIONAL: Flower para monitorar Celery tasks
+  # flower:
+  #   image: mher/flower
+  #   container_name: video-downloader-flower
+  #   ports:
+  #     - "5555:5555"
+  #   environment:
+  #     - CELERY_BROKER_URL=redis://redis:6379/0
+  #     - CELERY_RESULT_BACKEND=redis://redis:6379/0
+  #   depends_on:
+  #     - redis
+  #   networks:
+  #     - video-network
+  #   restart: unless-stopped
+
+networks:
+  video-network:
+    driver: bridge
+
+volumes:
+  redis_data:

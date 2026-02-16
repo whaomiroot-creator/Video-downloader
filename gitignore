@@ -1,0 +1,38 @@
+# Ambientes virtuais
+venv/
+.venv/
+env/
+virtualenv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+
+# Arquivos temporários
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node / Build
+node_modules/
+dist/
+build/
+*.exe
+*.whl
+*.spec
+
+# Deploy / env
+.env
+.env.local
+.env.development
+.env.test
+.env.production

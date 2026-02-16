@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Video Downloader Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        
+        * { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        body {
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+            color: #f1f5f9;
+            min-height: 100vh;
+        }
+
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .btn-gradient {
+            background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
+            transition: all 0.3s ease;
+        }
+
+        .btn-gradient:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -10px #0ea5e9;
+        }
+
+        .format-btn {
+            border: 2px solid transparent;
+            background: rgba(255, 255, 255, 0.05);
+            transition: all 0.2s;
+        }
+
+        .format-btn.active {
+            border-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.1);
+            color: #38bdf8;
+        }
+
+        .loader-ring {
+            width: 48px;
+            height: 48px;
+            border: 5px solid #1e293b;
+            border-bottom-color: #38bdf8;
+            border-radius: 50%;
+            display: inline-block;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        input:focus, select:focus {
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <nav class="max-w-6xl mx-auto flex justify-between items-center mb-12">
+        <div class="flex items-center gap-2">
+            <div class="bg-sky-500 p-2 rounded-lg shadow-lg shadow-sky-500/20">
+                <i class="fa-solid fa-play text-white text-xl"></i>
+            </div>
+            <span class="text-xl font-extrabold tracking-tight">V-ENGINE</span>
+        </div>
+        <div id="api-status" class="px-4 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-xs font-bold flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+            VERIFICANDO API
+        </div>
+    </nav>
+
+    <main class="max-w-4xl mx-auto">
+        <div class="text-center mb-10">
+            <h1 class="text-4xl md:text-6xl font-extrabold mb-4 leading-tight">
+                Baixe o mundo com <br><span class="gradient-text italic">um clique.</span>
+            </h1>
+            <p class="text-slate-400 text-lg">Suporta YouTube, TikTok, Instagram e +1000 sites.</p>
+        </div>
+
+        <div class="glass rounded-3xl p-6 md:p-8 mb-8">
+            <div class="flex flex-col gap-6">
+                <div class="relative">
+                    <input type="text" id="video-url" placeholder="Cole o link do vídeo aqui..." 
+                        class="w-full bg-slate-900/50 border border-slate-700 rounded-2xl py-4 px-6 text-lg focus:outline-none transition-all placeholder:text-slate-600">
+                    <button id="btn-info" class="absolute right-2 top-2 bottom-2 px-6 bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold rounded-xl transition-all">
+                        ANALISAR
+                    </button>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div class="flex gap-2">
+                        <button class="format-btn active flex-1 py-3 rounded-xl font-bold text-sm" data-format="mp4">
+                            <i class="fa-solid fa-video mr-2"></i>MP4 (VÍDEO)
+                        </button>
+                        <button class="format-btn flex-1 py-3 rounded-xl font-bold text-sm" data-format="mp3">
+                            <i class="fa-solid fa-music mr-2"></i>MP3 (ÁUDIO)
+                        </button>
+                    </div>
+                    <select id="quality-select" class="bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 font-semibold text-slate-300 focus:outline-none transition-all cursor-pointer">
+                        <option value="best">✨ Melhor Disponível</option>
+                        <option value="4k">💎 4K Ultra HD</option>
+                        <option value="1080p">🎬 1080p Full HD</option>
+                        <option value="720p">📺 720p HD</option>
+                        <option value="480p">📱 480p SD</option>
+                        <option value="360p">📉 360p Econômico</option>
+                    </select>
+                </div>
+
+                <button id="btn-download" disabled class="btn-gradient w-full py-5 rounded-2xl font-black text-lg tracking-widest disabled:opacity-30 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-bolt mr-2"></i> BAIXAR AGORA
+                </button>
+            </div>
+        </div>
+
+        <div id="video-card" class="hidden glass rounded-3xl overflow-hidden mb-8 animate-[fadeIn_0.5s_ease-out]">
+            <div class="flex flex-col md:flex-row">
+                <div class="md:w-2/5 relative">
+                    <img id="v-thumb" src="" class="w-full h-full object-cover min-h-[200px]" alt="Thumbnail">
+                    <div class="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent"></div>
+                </div>
+                <div class="p-6 md:w-3/5 flex flex-col justify-center">
+                    <h3 id="v-title" class="text-xl font-bold mb-4 line-clamp-2">Título do Vídeo</h3>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div class="text-slate-400">Canal: <span id="v-uploader" class="text-white block font-bold">--</span></div>
+                        <div class="text-slate-400">Duração: <span id="v-duration" class="text-white block font-bold">--</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass rounded-3xl p-6 mt-12 border-t-4 border-amber-500 relative overflow-hidden animate-[fadeIn_1s_ease-out]">
+            <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-amber-500/10 blur-3xl rounded-full"></div>
+            
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+                <div class="flex items-center gap-4 text-center md:text-left">
+                    <div class="bg-amber-500/20 p-4 rounded-2xl text-amber-500 text-3xl shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+                        <i class="fa-solid fa-mug-hot"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Apoie o Projeto</h3>
+                        <p class="text-slate-400">Gostou? Me pague um café para manter o servidor online! ☕️</p>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-center md:items-end gap-2">
+                    <button onclick="copyPix()" class="bg-amber-500 hover:bg-amber-600 text-slate-900 px-8 py-3 rounded-xl font-black transition-all flex items-center gap-2 transform hover:scale-105 active:scale-95 shadow-lg shadow-amber-500/20">
+                        <i class="fa-solid fa-copy"></i> COPIAR PIX
+                    </button>
+                    <span class="text-[9px] text-slate-500 font-mono tracking-tighter opacity-70">CHAVE: cefc4314-c221-4875-ad34-18c1033eaa4e</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading-screen" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] flex flex-col items-center justify-center text-center p-6">
+            <span class="loader-ring mb-6"></span>
+            <h2 class="text-2xl font-bold mb-2">Processando...</h2>
+            <p class="text-slate-400 animate-pulse" id="loading-msg">Extraindo áudio e vídeo da plataforma</p>
+        </div>
+
+        <div id="notif-container" class="fixed bottom-6 right-6 flex flex-col gap-3"></div>
+
+    </main>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:8000/api';
+        let currentFormat = 'mp4';
+
+        // Função para Copiar PIX
+        function copyPix() {
+            const chave = "cefc4314-c221-4875-ad34-18c1033eaa4e";
+            navigator.clipboard.writeText(chave).then(() => {
+                notify("Chave PIX copiada! Muito obrigado pelo apoio ☕️", "success");
+            });
+        }
+
+        function notify(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `p-4 rounded-xl font-bold text-sm shadow-2xl glass border-l-4 ${type === 'error' ? 'border-red-500' : 'border-sky-500'} min-w-[300px] transform translate-y-10 opacity-0 transition-all duration-300 z-[1000]`;
+            div.innerText = msg;
+            document.getElementById('notif-container').appendChild(div);
+            setTimeout(() => { div.classList.remove('translate-y-10', 'opacity-0'); }, 10);
+            setTimeout(() => { 
+                div.classList.add('opacity-0'); 
+                setTimeout(() => div.remove(), 300);
+            }, 5000);
+        }
+
+        async function checkAPI() {
+            try {
+                const res = await fetch(`${API_URL}/health`);
+                if(res.ok) {
+                    document.getElementById('api-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> API ONLINE';
+                }
+            } catch {
+                document.getElementById('api-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> API OFFLINE';
+            }
+        }
+
+        document.querySelectorAll('.format-btn').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFormat = btn.dataset.format;
+                
+                const qSelect = document.getElementById('quality-select');
+                if(currentFormat === 'mp3') {
+                    qSelect.style.opacity = '0.5';
+                    qSelect.disabled = true;
+                } else {
+                    qSelect.style.opacity = '1';
+                    qSelect.disabled = false;
+                }
+            };
+        });
+
+        document.getElementById('btn-info').onclick = async () => {
+            const url = document.getElementById('video-url').value;
+            if(!url) return notify("Cole uma URL primeiro", "error");
+
+            document.getElementById('loading-screen').classList.remove('hidden');
+            
+            try {
+                const res = await fetch(`${API_URL}/info`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url})
+                });
+                
+                if(!res.ok) throw new Error("Link inválido ou não suportado");
+                
+                const data = await res.json();
+                
+                document.getElementById('v-thumb').src = data.thumbnail_url;
+                document.getElementById('v-title').innerText = data.title;
+                document.getElementById('v-uploader').innerText = data.uploader;
+                document.getElementById('v-duration').innerText = Math.floor(data.duration_seconds/60) + ' min';
+                
+                document.getElementById('video-card').classList.remove('hidden');
+                document.getElementById('btn-download').disabled = false;
+                notify("Vídeo analisado com sucesso!", "success");
+            } catch (err) {
+                notify(err.message, "error");
+            } finally {
+                document.getElementById('loading-screen').classList.add('hidden');
+            }
+        };
+
+        document.getElementById('btn-download').onclick = async () => {
+            const url = document.getElementById('video-url').value;
+            const quality = document.getElementById('quality-select').value;
+            
+            document.getElementById('loading-screen').classList.remove('hidden');
+            document.getElementById('loading-msg').innerText = "Fundindo áudio e vídeo... Isso pode levar um minuto.";
+
+            try {
+                const res = await fetch(`${API_URL}/download`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        url, 
+                        format_type: currentFormat,
+                        quality: quality
+                    })
+                });
+
+                const data = await res.json();
+                if(!res.ok) throw new Error(data.detail || "Erro no download");
+
+                const finalDownloadUrl = `http://127.0.0.1:8000${data.download_url}`;
+                
+                notify("Download concluído! Iniciando transferência...", "success");
+                
+                const link = document.createElement('a');
+                link.href = finalDownloadUrl;
+                link.setAttribute('download', '');
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+
+            } catch (err) {
+                notify(err.message, "error");
+            } finally {
+                document.getElementById('loading-screen').classList.add('hidden');
+                document.getElementById('loading-msg').innerText = "Extraindo áudio e vídeo da plataforma";
+            }
+        };
+
+        checkAPI();
+    </script>
+</body>
+</html>
