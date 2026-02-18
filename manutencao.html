@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V-ENGINE | Manutenção</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        * { font-family: 'Plus Jakarta Sans', sans-serif; }
+        body {
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+            color: #f1f5f9;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+    </style>
+</head>
+<body class="p-6">
+    <div class="glass max-w-md w-full rounded-3xl p-8 text-center border-t-4 border-amber-500">
+        <div class="bg-amber-500/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-amber-500 text-4xl shadow-[0_0_20px_rgba(245,158,11,0.2)]">
+            <i class="fa-solid fa-wrench animate-bounce"></i>
+        </div>
+        
+        <h1 class="text-3xl font-extrabold mb-4 uppercase tracking-tighter">Aviso Importante</h1>
+        
+        <p class="text-slate-400 mb-6 leading-relaxed">
+            O motor de download para o <span class="text-white font-bold">YouTube</span> está passando por uma manutenção técnica para atualização de algoritmos.
+        </p>
+
+        <div class="bg-slate-900/50 rounded-2xl p-4 mb-8 border border-slate-700">
+            <p class="text-xs font-bold text-sky-400 uppercase tracking-widest mb-1">Previsão de Retorno</p>
+            <p class="text-xl font-black text-white">EM BREVE</p>
+        </div>
+
+        <p class="text-sm text-slate-500 mb-6 italic">
+            Outros sites como TikTok e Instagram continuam operando normalmente.
+        </p>
+
+        <a href="/" class="inline-block w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl transition-all border border-slate-700">
+            <i class="fa-solid fa-arrow-left mr-2"></i> VOLTAR PARA O SITE
+        </a>
+    </div>
+</body>
+</html>
