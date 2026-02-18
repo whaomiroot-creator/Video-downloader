@@ -4,18 +4,16 @@ import shutil
 import re
 import logging
 import uuid
-import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import yt_dlp
 
-# --- CONFIGURAÇÃO ---
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,143 +23,121 @@ TEMP_DIR = Path("temp")
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
+# Banco de dados de progresso e resultados finais
 progress_db: Dict[str, float] = {}
-
-def sanitize_filename(name: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*]', '', name)
-    return name.replace(' ', '_').strip()[:100] or "video"
+results_db: Dict[str, str] = {} # Guarda o link final quando pronto
 
 def progress_hook(d):
+    # Pega o ID que injetamos manualmente
     download_id = d.get('info_dict', {}).get('v_engine_id')
+    if not download_id:
+        return
+
     if d['status'] == 'downloading':
         try:
             p = d.get('_percent_str', '0%')
-            # Limpa caracteres de cor e extrai número
             p_clean = re.sub(r'\x1b\[[0-9;]*m', '', p).replace('%', '').strip()
-            if download_id:
-                progress_db[download_id] = float(p_clean)
-                logger.info(f"Progresso [{download_id}]: {p_clean}%")
+            progress_db[download_id] = float(p_clean)
         except:
             pass
     elif d['status'] == 'finished':
-        if download_id:
-            progress_db[download_id] = 100.0
+        progress_db[download_id] = 100.0
 
-def get_base_ydl_opts() -> Dict[str, Any]:
-    opts = {
-        'quiet': False, # Deixamos False para ver erros no log do Render
-        'no_warnings': False,
+def get_base_ydl_opts(download_id: str) -> Dict[str, Any]:
+    return {
+        'quiet': True,
+        'no_warnings': True,
         'nocheckcertificate': True,
-        'no_color': True,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'progress_hooks': [progress_hook],
+        # Injetamos o ID aqui para o hook encontrar depois
+        'v_engine_id': download_id 
     }
-    if os.path.exists("cookies.txt"):
-        opts['cookiefile'] = "cookies.txt"
-        logger.info("🍪 Cookies carregados.")
-    return opts
 
-# --- MODELOS ---
-class VideoInfoRequest(BaseModel):
-    url: str
-
-class VideoDownloadRequest(BaseModel):
+class VideoRequest(BaseModel):
     url: str
     format_type: str = "mp4"
 
 app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# --- ROTAS ---
-@app.get("/", response_class=HTMLResponse)
-async def serve_index():
-    path = Path("index.html")
-    return path.read_text(encoding="utf-8") if path.exists() else "API Online"
-
-@app.get("/api/progress/{download_id}")
-async def get_progress(download_id: str):
-    return {"progress": progress_db.get(download_id, 0)}
-
-@app.post("/api/info")
-async def get_info(request: VideoInfoRequest):
-    with yt_dlp.YoutubeDL(get_base_ydl_opts()) as ydl:
-        try:
-            info = ydl.extract_info(request.url.strip(), download=False)
-            return {
-                "title": info.get('title', 'Video Pinterest'),
-                "duration_seconds": int(info.get('duration') or 0),
-                "thumbnail_url": info.get('thumbnail', ''),
-                "uploader": info.get('uploader', 'User')
-            }
-        except Exception as e:
-            logger.error(f"Erro Info: {e}")
-            raise HTTPException(status_code=400, detail="Vídeo indisponível ou link inválido.")
-
-@app.post("/api/download")
-async def download(request: VideoDownloadRequest):
-    unique_id = uuid.uuid4().hex[:8]
-    progress_db[unique_id] = 0.1 # Inicia com 0.1 para o front saber que começou
-    
-    base_name = f"v_{unique_id}"
-    opts = get_base_ydl_opts()
+# --- LÓGICA DE DOWNLOAD EM SEGUNDO PLANO ---
+def task_download_video(download_id: str, url: str, format_type: str):
+    base_name = f"v_{download_id}"
+    opts = get_base_ydl_opts(download_id)
     opts['outtmpl'] = str(TEMP_DIR / f"{base_name}_%(id)s.%(ext)s")
-
-    # Simplificação total dos formatos para evitar erro de "Requested format not available"
-    if request.format_type == "mp3":
+    
+    if format_type == "mp3":
         opts.update({
             'format': 'bestaudio/best',
             'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
         })
     else:
-        # Pega o melhor vídeo que já venha com áudio (evita merge complexo que trava em 0%)
-        opts['format'] = 'best' 
-
-    def run_dl():
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.params['v_engine_id'] = unique_id
-            return ydl.extract_info(request.url.strip(), download=True)
+        opts['format'] = 'best'
 
     try:
-        loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(None, run_dl)
-        
-        # Busca o arquivo
-        await asyncio.sleep(1)
-        files = list(TEMP_DIR.glob(f"{base_name}*"))
-        media_files = [f for f in files if f.suffix.lower() in ['.mp3', '.mp4', '.webm', '.mkv', '.mov']]
-
-        if not media_files:
-            raise Exception("O download falhou em gerar um arquivo de mídia.")
-
-        temp_file = media_files[0]
-        final_ext = ".mp3" if request.format_type == "mp3" else temp_file.suffix
-        final_name = f"final_{unique_id}{final_ext}"
-        final_path = DOWNLOAD_DIR / final_name
-        
-        shutil.move(str(temp_file), str(final_path))
-        
-        return {
-            "status": "success",
-            "download_id": unique_id,
-            "download_url": f"/api/file/{final_name}?title={sanitize_filename(info.get('title','video'))}"
-        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            # Forçamos o ID dentro do info_dict antes do download
+            info = ydl.extract_info(url, download=False)
+            info['v_engine_id'] = download_id
+            ydl.process_info(info) # Inicia o download real
+            
+            # Localização do arquivo
+            time_out = 0
+            while time_out < 5: # Espera o arquivo aparecer no disco
+                files = list(TEMP_DIR.glob(f"{base_name}*"))
+                media_files = [f for f in files if f.suffix.lower() in ['.mp3', '.mp4', '.webm', '.mkv']]
+                if media_files:
+                    temp_file = media_files[0]
+                    final_name = f"final_{download_id}{temp_file.suffix}"
+                    shutil.move(str(temp_file), str(DOWNLOAD_DIR / final_name))
+                    
+                    # Salva o link para o front coletar
+                    title = re.sub(r'[^\w\s-]', '', info.get('title', 'video'))
+                    results_db[download_id] = f"/api/file/{final_name}?title={title}"
+                    break
+                time.sleep(1)
+                time_out += 1
     except Exception as e:
-        logger.error(f"Erro Crítico: {e}")
-        progress_db[unique_id] = 0 # Reseta progresso em caso de erro
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Erro na Task: {e}")
+        progress_db[download_id] = -1 # Sinal de erro
+
+# --- ROTAS ---
+@app.get("/api/progress/{download_id}")
+async def get_progress(download_id: str):
+    return {
+        "progress": progress_db.get(download_id, 0),
+        "download_url": results_db.get(download_id, None)
+    }
+
+@app.post("/api/download")
+async def start_download(request: VideoRequest, background_tasks: BackgroundTasks):
+    unique_id = uuid.uuid4().hex[:8]
+    progress_db[unique_id] = 0.1
+    
+    # Adiciona a tarefa para rodar "atrás das cortinas"
+    background_tasks.add_task(task_download_video, unique_id, request.url, request.format_type)
+    
+    # Responde NA HORA para o frontend com o ID correto
+    return {"status": "started", "download_id": unique_id}
 
 @app.get("/api/file/{filename}")
-async def get_file(filename: str, title: Optional[str] = "video"):
+async def get_file(filename: str, title: str = "video"):
     p = DOWNLOAD_DIR / filename
-    if not p.exists(): raise HTTPException(404, "Arquivo não encontrado.")
-    return FileResponse(p, media_type="application/octet-stream", filename=f"{title}{p.suffix}")
+    if not p.exists(): raise HTTPException(404)
+    return FileResponse(p, filename=f"{title}{p.suffix}")
+
+@app.post("/api/info")
+async def get_info(request: VideoRequest):
+    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        info = ydl.extract_info(request.url, download=False)
+        return {
+            "title": info.get('title', 'Video'),
+            "thumbnail_url": info.get('thumbnail', ''),
+            "uploader": info.get('uploader', 'User')
+        }
 
 if __name__ == "__main__":
     import uvicorn
+    import time
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
