@@ -1,296 +1,148 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-    <link rel="manifest" href="/manifest.json">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V-ENGINE | Downloader Pro</title>
-    
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <title>V-ENGINE | Downloader</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
-        * { font-family: 'Plus Jakarta Sans', sans-serif; }
-        
-        body {
-            background: radial-gradient(circle at top right, #1e293b, #0f172a);
-            color: #f1f5f9;
-            min-height: 100vh;
-        }
-
-        .glass {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        }
-
-        .gradient-text {
-            background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .btn-gradient {
-            background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
-            transition: all 0.3s ease;
-        }
-
-        .btn-gradient:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px -10px #0ea5e9;
-        }
-
-        .format-btn {
-            border: 2px solid transparent;
-            background: rgba(255, 255, 255, 0.05);
-            transition: all 0.2s;
-        }
-
-        .format-btn.active {
-            border-color: #38bdf8;
-            background: rgba(56, 189, 248, 0.1);
-            color: #38bdf8;
-        }
-
-        .loader-ring {
-            width: 48px; height: 48px;
-            border: 5px solid #1e293b;
-            border-bottom-color: #38bdf8;
-            border-radius: 50%;
-            display: inline-block;
-            animation: rotation 1s linear infinite;
-        }
-
-        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        /* Estilo para o botão de colar dentro do input */
-        .btn-paste {
-            background: rgba(56, 189, 248, 0.15);
-            color: #38bdf8;
-            border: 1px solid rgba(56, 189, 248, 0.3);
-        }
-        .btn-paste:hover { background: rgba(56, 189, 248, 0.25); }
+        body { background-color: #0f172a; color: white; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .loader { border-top-color: #3b82f6; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<body class="min-h-screen flex items-center justify-center p-4">
 
-    <nav class="max-w-6xl mx-auto flex justify-between items-center mb-8 md:mb-12">
-        <div class="flex items-center gap-2">
-            <div class="bg-sky-500 p-2 rounded-lg shadow-lg">
-                <i class="fa-solid fa-play text-white text-lg md:text-xl"></i>
-            </div>
-            <span class="text-lg md:text-xl font-extrabold tracking-tight uppercase">V-Engine</span>
-        </div>
-        <div id="api-status" class="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] md:text-xs font-bold flex items-center gap-2">
-            <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-            <span id="status-text" class="hidden sm:inline">VERIFICANDO API</span>
-        </div>
-    </nav>
-
-    <main class="max-w-4xl mx-auto">
-        <div class="text-center mb-8 md:mb-10">
-            <h1 class="text-3xl md:text-6xl font-extrabold mb-4 leading-tight">
-                Baixe o mundo com <br><span class="gradient-text italic">um clique.</span>
+    <div class="glass w-full max-w-lg rounded-2xl p-6 shadow-2xl">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
+                V-ENGINE
             </h1>
-            <p class="text-slate-400 text-sm md:text-lg">YouTube, TikTok, Instagram e +1000 sites.</p>
+            <p class="text-slate-400 text-sm mt-2">Baixe vídeos e áudios em alta qualidade</p>
         </div>
 
-        <div class="glass rounded-3xl p-5 md:p-8 mb-8">
-            <div class="flex flex-col gap-5">
-                <div class="relative flex items-center">
-                    <input type="text" id="video-url" placeholder="Cole o link aqui..." 
-                        class="w-full bg-slate-900/50 border border-slate-700 rounded-2xl py-4 px-6 pr-32 text-base md:text-lg focus:outline-none transition-all placeholder:text-slate-600">
-                    
-                    <div class="absolute right-2 flex gap-1">
-                        <button onclick="pasteClipboard()" class="btn-paste px-3 py-2 rounded-xl text-xs font-bold transition-all">
-                            <i class="fa-solid fa-paste mr-1"></i> COLAR
-                        </button>
-                    </div>
-                </div>
+        <div class="space-y-4">
+            <div class="relative">
+                <input type="text" id="videoUrl" 
+                    placeholder="Cole o link do vídeo aqui..." 
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg py-3 px-4 pr-24 focus:outline-none focus:border-blue-500 transition-all text-sm">
+                
+                <button onclick="pasteLink()" 
+                    class="absolute right-2 top-2 bg-slate-700 hover:bg-slate-600 text-xs py-2 px-3 rounded-md transition-all">
+                    <i class="fa-solid fa-paste mr-1"></i> Colar
+                </button>
+            </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="flex gap-2">
-                        <button class="format-btn active flex-1 py-3 rounded-xl font-bold text-xs md:text-sm" data-format="mp4">
-                            <i class="fa-solid fa-video mr-2"></i>MP4
-                        </button>
-                        <button class="format-btn flex-1 py-3 rounded-xl font-bold text-xs md:text-sm" data-format="mp3">
-                            <i class="fa-solid fa-music mr-2"></i>MP3
-                        </button>
-                    </div>
-                    <button id="btn-info" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-sky-400 font-bold rounded-xl transition-all border border-slate-700">
-                        <i class="fa-solid fa-magnifying-glass mr-2"></i> ANALISAR VÍDEO
-                    </button>
-                </div>
+            <button onclick="analyzeVideo()" id="btnAnalyze"
+                class="w-full bg-blue-600 hover:bg-blue-700 font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-magnifying-glass"></i> Analisar Vídeo
+            </button>
+        </div>
 
-                <button id="btn-download" disabled class="btn-gradient w-full py-4 md:py-5 rounded-2xl font-black text-base md:text-lg tracking-widest disabled:opacity-20">
-                    <i class="fa-solid fa-bolt mr-2"></i> BAIXAR AGORA
+        <div id="resultArea" class="hidden mt-8 space-y-4 animate-fade-in">
+            <div class="glass p-4 rounded-xl flex flex-col sm:flex-row gap-4">
+                <img id="thumb" class="w-full sm:w-32 h-24 object-cover rounded-lg shadow-md" src="" alt="Thumbnail">
+                <div class="flex-1">
+                    <h3 id="videoTitle" class="font-bold text-sm line-clamp-2">Título do Vídeo</h3>
+                    <p id="videoAuthor" class="text-xs text-slate-400 mt-1"></p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="download('mp4')" class="bg-green-600 hover:bg-green-700 py-2 rounded-lg text-sm font-bold transition-all">
+                    <i class="fa-solid fa-video mr-1"></i> MP4 (Vídeo)
+                </button>
+                <button onclick="download('mp3')" class="bg-purple-600 hover:bg-purple-700 py-2 rounded-lg text-sm font-bold transition-all">
+                    <i class="fa-solid fa-music mr-1"></i> MP3 (Áudio)
                 </button>
             </div>
         </div>
 
-        <div id="video-card" class="hidden glass rounded-3xl overflow-hidden mb-8 animate-[fadeIn_0.5s_ease-out]">
-            <div class="flex flex-col md:flex-row">
-                <div class="md:w-2/5 relative">
-                    <img id="v-thumb" src="" class="w-full h-48 md:h-full object-cover" alt="Thumbnail">
-                    <div class="absolute inset-0 bg-gradient-to-t from-slate-900 md:hidden to-transparent"></div>
-                </div>
-                <div class="p-6 md:w-3/5 flex flex-col justify-center">
-                    <h3 id="v-title" class="text-lg font-bold mb-4 line-clamp-2">Título do Vídeo</h3>
-                    <div class="grid grid-cols-2 gap-4 text-xs">
-                        <div class="text-slate-400">Canal: <span id="v-uploader" class="text-white block font-bold text-sm">--</span></div>
-                        <div class="text-slate-400">Duração: <span id="v-duration" class="text-white block font-bold text-sm">--</span></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="glass rounded-3xl p-6 mt-12 border-t-4 border-amber-500 relative overflow-hidden">
-            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-                <div class="flex items-center gap-4 text-center md:text-left">
-                    <div class="bg-amber-500/20 p-4 rounded-2xl text-amber-500 text-2xl">
-                        <i class="fa-solid fa-mug-hot"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-lg font-bold text-white">Apoie o Projeto</h3>
-                        <p class="text-slate-400 text-sm">Me ajude a manter o servidor online! ☕️</p>
-                    </div>
-                </div>
-                <button onclick="copyPix()" class="bg-amber-500 hover:bg-amber-600 text-slate-900 px-8 py-3 rounded-xl font-black transition-all flex items-center gap-2 w-full md:w-auto justify-center">
-                    <i class="fa-solid fa-copy"></i> COPIAR PIX
-                </button>
-            </div>
-        </div>
-
-        <div id="loading-screen" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-[100] flex flex-col items-center justify-center p-6 text-center">
-            <span class="loader-ring mb-6"></span>
-            <h2 id="loading-title" class="text-xl font-bold mb-2">Processando...</h2>
-            <p id="loading-msg" class="text-slate-400 animate-pulse text-sm">Aguarde a resposta do servidor</p>
-        </div>
-
-        <div id="notif-container" class="fixed bottom-6 right-6 left-6 md:left-auto flex flex-col gap-3 z-[1000]"></div>
-    </main>
-
-    <script>
-        // Lógica de URLs Dinâmicas para funcionar no Render/Koyeb/Railway
-        const API_BASE = window.location.origin;
-        const API_URL = `${API_BASE}/api`;
-        let currentFormat = 'mp4';
-
-        // Função de Colar Inteligente
-        async function pasteClipboard() {
-            try {
-                const text = await navigator.clipboard.readText();
-                document.getElementById('video-url').value = text;
-                notify("Link colado!", "success");
-            } catch (err) {
-                notify("Permita o acesso à área de transferência", "error");
-            }
-        }
-
-        function notify(msg, type = 'info') {
-            const div = document.createElement('div');
-            div.className = `p-4 rounded-xl font-bold text-sm shadow-2xl glass border-l-4 ${type === 'error' ? 'border-red-500' : 'border-sky-500'} transition-all duration-300 animate-bounce`;
-            div.innerText = msg;
-            document.getElementById('notif-container').appendChild(div);
-            setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 4000);
-        }
-
-        async function checkAPI() {
-            try {
-                const res = await fetch(`${API_URL}/health`);
-                if(res.ok) {
-                    document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500";
-                    document.getElementById('status-text').innerText = "API ONLINE";
-                }
-            } catch {
-                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-red-500";
-                document.getElementById('status-text').innerText = "API OFFLINE";
-            }
-        }
-
-        document.querySelectorAll('.format-btn').forEach(btn => {
-            btn.onclick = () => {
-                document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                currentFormat = btn.dataset.format;
-            };
-        });
-
-        document.getElementById('btn-info').onclick = async () => {
-            const url = document.getElementById('video-url').value;
-            if(!url) return notify("Cole uma URL primeiro", "error");
-            
-            showLoading("Analisando vídeo", "Conectando ao servidor...");
-
-            try {
-                const res = await fetch(`${API_URL}/info`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({url})
-                });
-                if(!res.ok) throw new Error("Link inválido ou não suportado");
-                
-                const data = await res.json();
-                document.getElementById('v-thumb').src = data.thumbnail_url;
-                document.getElementById('v-title').innerText = data.title;
-                document.getElementById('v-uploader').innerText = data.uploader;
-                document.getElementById('v-duration').innerText = Math.floor(data.duration_seconds/60) + ' min';
-                document.getElementById('video-card').classList.remove('hidden');
-                document.getElementById('btn-download').disabled = false;
-                notify("Vídeo analisado!", "success");
-            } catch (err) {
-                notify(err.message, "error");
-            } finally {
-                hideLoading();
-            }
-        };
-
-        document.getElementById('btn-download').onclick = async () => {
-            const url = document.getElementById('video-url').value;
-            showLoading("Preparando download", "Isso pode levar um minuto para vídeos grandes...");
-
-            try {
-                const res = await fetch(`${API_URL}/download`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ url, format_type: currentFormat })
-                });
-                
-                const data = await res.json();
-                if(!res.ok) throw new Error(data.detail || "Erro no processamento");
-                
-                notify("Download pronto!", "success");
-                window.location.href = `${API_BASE}${data.download_url}`;
-            } catch (err) {
-                notify(err.message, "error");
-            } finally {
-                hideLoading();
-            }
-        };
-
-        function showLoading(title, msg) {
-            document.getElementById('loading-title').innerText = title;
-            document.getElementById('loading-msg').innerText = msg;
-            document.getElementById('loading-screen').classList.remove('hidden');
-        }
-
-        function hideLoading() {
-            document.getElementById('loading-screen').classList.add('hidden');
-        }
-
-        function copyPix() {
-            navigator.clipboard.writeText("cefc4314-c221-4875-ad34-18c1033eaa4e");
-            notify("Chave PIX copiada! ☕️", "success");
-        }
-
-        checkAPI();
-    </script>
-</body>
-<div id="maintenance-banner" class="hidden fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md items-center justify-center p-6">
+        <div id="status" class="hidden mt-4 text-center text-sm p-3 rounded-lg"></div>
     </div>
 
-    
+    <script>
+        // Função para colar o link do clipboard
+        async function pasteLink() {
+            try {
+                const text = await navigator.clipboard.readText();
+                document.getElementById('videoUrl').value = text;
+            } catch (err) {
+                alert("Para colar, permita o acesso à área de transferência ou use Ctrl+V.");
+            }
+        }
+
+        async function analyzeVideo() {
+            const url = document.getElementById('videoUrl').value;
+            const btn = document.getElementById('btnAnalyze');
+            const resultArea = document.getElementById('resultArea');
+            const status = document.getElementById('status');
+
+            if (!url) return;
+
+            // Interface em loading
+            btn.disabled = true;
+            btn.innerHTML = `<div class="loader w-5 h-5 border-2 rounded-full"></div> Analisando...`;
+            status.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('thumb').src = data.thumbnail_url;
+                    document.getElementById('videoTitle').innerText = data.title;
+                    document.getElementById('videoAuthor').innerText = data.uploader;
+                    resultArea.classList.remove('hidden');
+                } else {
+                    throw new Error(data.detail || "Erro ao analisar link");
+                }
+            } catch (err) {
+                status.innerText = err.message;
+                status.className = "mt-4 text-center text-sm p-3 rounded-lg bg-red-900/30 text-red-400";
+                status.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-magnifying-glass"></i> Analisar Vídeo`;
+            }
+        }
+
+        async function download(type) {
+            const url = document.getElementById('videoUrl').value;
+            const status = document.getElementById('status');
+            
+            status.innerText = "Processando download... Isso pode levar alguns minutos.";
+            status.className = "mt-4 text-center text-sm p-3 rounded-lg bg-blue-900/30 text-blue-400";
+            status.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, format_type: type })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    status.innerText = "Download pronto! Iniciando...";
+                    status.className = "mt-4 text-center text-sm p-3 rounded-lg bg-green-900/30 text-green-400";
+                    window.location.href = data.download_url;
+                } else {
+                    throw new Error("Erro no processamento.");
+                }
+            } catch (err) {
+                status.innerText = "Erro ao baixar. O vídeo pode ser muito longo ou protegido.";
+                status.className = "mt-4 text-center text-sm p-3 rounded-lg bg-red-900/30 text-red-400";
+            }
+        }
+    </script>
+</body>
 </html>
