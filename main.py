@@ -4,17 +4,18 @@ import shutil
 import re
 import logging
 import uuid
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import yt_dlp
 
-# CONFIGURAÇÃO
+# --- CONFIGURAÇÃO ---
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,14 +25,12 @@ TEMP_DIR = Path("temp")
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
-# Banco de dados temporário para o progresso
 progress_db: Dict[str, float] = {}
 
 def sanitize_filename(name: str) -> str:
     name = re.sub(r'[<>:"/\\|?*]', '', name)
     return name.replace(' ', '_').strip()[:100] or "video"
 
-# Hook para capturar o progresso do yt-dlp
 def progress_hook(d):
     if d['status'] == 'downloading':
         try:
@@ -47,7 +46,6 @@ def progress_hook(d):
         if download_id:
             progress_db[download_id] = 100.0
 
-# CONFIGURAÇÃO BASE
 def get_base_ydl_opts() -> Dict[str, Any]:
     opts = {
         'quiet': True,
@@ -67,7 +65,7 @@ def get_base_ydl_opts() -> Dict[str, Any]:
         opts['cookiefile'] = "cookies.txt"
     return opts
 
-# MODELOS
+# --- MODELOS ---
 class VideoInfoRequest(BaseModel):
     url: str
 
@@ -84,6 +82,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- TAREFAS DE LIMPEZA ---
+async def clean_old_files():
+    """Remove arquivos com mais de 30 minutos para economizar espaço no Render"""
+    while True:
+        now = time.time()
+        for path in [DOWNLOAD_DIR, TEMP_DIR]:
+            for item in path.glob("*"):
+                if item.is_file() and (now - item.stat().st_mtime) > 1800:
+                    try: item.unlink()
+                    except: pass
+        await asyncio.sleep(600)
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(clean_old_files())
+
+# --- ROTAS ---
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     path = Path("index.html")
@@ -109,17 +124,15 @@ async def get_info(request: VideoInfoRequest):
                 "uploader": info.get('uploader', 'Unknown')
             }
         except Exception as e:
-            logger.error(f"Erro Info: {e}")
-            raise HTTPException(status_code=400, detail="Erro ao acessar vídeo.")
+            raise HTTPException(status_code=400, detail="Não foi possível obter informações do vídeo.")
 
 @app.post("/api/download")
 async def download(request: VideoDownloadRequest):
     unique_id = uuid.uuid4().hex[:8]
     progress_db[unique_id] = 0
+    base_name = f"vengine_{unique_id}"
     
     opts = get_base_ydl_opts()
-    # Definimos um prefixo fixo no nome do arquivo para facilitar a busca
-    base_name = f"vengine_{unique_id}"
     opts['outtmpl'] = str(TEMP_DIR / f"{base_name}_%(id)s.%(ext)s")
 
     if request.format_type == "mp3":
@@ -133,30 +146,33 @@ async def download(request: VideoDownloadRequest):
             ],
         })
     else:
+        # Formato Inteligente: Tenta MP4 de alta qualidade, senão pega o melhor disponível (Pinterest/TikTok)
         opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
         opts['postprocessors'] = [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
 
     def run_dl():
-        with yt_dlp.YoutubeDL(opts) as ydl_instance:
-            ydl_instance.params['v_engine_id'] = unique_id
-            return ydl_instance.extract_info(request.url.strip(), download=True)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.params['v_engine_id'] = unique_id
+            try:
+                return ydl.extract_info(request.url.strip(), download=True)
+            except Exception:
+                # Fallback para sites com formatos simples (Pinterest, etc)
+                ydl.params['format'] = 'best'
+                return ydl.extract_info(request.url.strip(), download=True)
 
     try:
         loop = asyncio.get_event_loop()
         info = await loop.run_in_executor(None, run_dl)
         
-        # Aguarda um instante para o SO liberar o arquivo após o processamento do FFmpeg
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(2) # Buffer para o FFmpeg finalizar o arquivo
         
-        # Localiza o arquivo na pasta TEMP que comece com o nosso base_name
         files = list(TEMP_DIR.glob(f"{base_name}*"))
-        
-        # Filtra para pegar apenas arquivos de áudio/vídeo (ignora .jpg/.webp da thumb)
-        media_exts = ['.mp3', '.mp4', '.m4v', '.webm', '.mkv']
+        # Lista estendida de extensões para suportar diversos sites
+        media_exts = ['.mp3', '.mp4', '.m4v', '.webm', '.mkv', '.mov', '.avi']
         media_files = [f for f in files if f.suffix.lower() in media_exts]
 
         if not media_files:
-            raise Exception("Arquivo final não localizado no servidor.")
+            raise Exception("O servidor baixou o arquivo, mas não conseguiu localizá-lo.")
 
         temp_file = media_files[0]
         final_ext = ".mp3" if request.format_type == "mp3" else ".mp4"
@@ -165,7 +181,7 @@ async def download(request: VideoDownloadRequest):
         
         shutil.move(str(temp_file), str(final_path))
         
-        # Limpeza rápida de resíduos de thumbnails
+        # Limpeza de resíduos (thumbs, etc)
         for f in files:
             if f.exists():
                 try: os.remove(f)
@@ -177,13 +193,13 @@ async def download(request: VideoDownloadRequest):
             "download_url": f"/api/file/{final_name}?title={sanitize_filename(info.get('title','video'))}"
         }
     except Exception as e:
-        logger.error(f"Erro Download: {e}")
+        logger.error(f"Erro no download: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/file/{filename}")
 async def get_file(filename: str, title: Optional[str] = "video"):
     p = DOWNLOAD_DIR / filename
-    if not p.exists(): raise HTTPException(404, "Arquivo indisponível.")
+    if not p.exists(): raise HTTPException(404, "Arquivo expirou ou não existe.")
     return FileResponse(p, media_type="application/octet-stream", filename=f"{title}{p.suffix}")
 
 if __name__ == "__main__":
