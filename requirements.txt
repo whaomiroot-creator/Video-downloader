@@ -1,12 +1,9 @@
-fastapi>=0.115.0
-pydantic>=2.0.0
-uvicorn[standard]
+fastapi==0.115.0
+pydantic==2.9.2
+uvicorn[standard]==0.31.0
 yt-dlp
 python-dotenv
-shutil
-pathlib
 pycryptodomex
-certifi
 
 
 
