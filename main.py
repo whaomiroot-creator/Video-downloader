@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import yt_dlp
 
-# CONFIGURAÇÃO DE AMBIENTE
+# CONFIGURAÇÃO
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,37 +25,37 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 def sanitize_filename(name: str) -> str:
-    """Limpa o nome do arquivo para evitar erros no sistema."""
     name = re.sub(r'[<>:"/\\|?*]', '', name)
-    return name.replace(' ', '_').strip()[:100] or "video_download"
+    return name.replace(' ', '_').strip()[:100] or "video"
 
+# CONFIGURAÇÃO DE EVASÃO MÁXIMA
 def get_base_ydl_opts() -> Dict[str, Any]:
-    """Configurações base para burlar bloqueios em diversos sites."""
     opts = {
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        # User-agent moderno para parecer um navegador real
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        # Necessário para Instagram/TikTok e YouTube (via Secret File no Render)
-        'cookiefile': 'cookies.txt' if os.path.exists("cookies.txt") else None,
-        'concurrent_fragment_downloads': 5,
+        'no_color': True,
+        # Força o uso de IPv4, já que IPv6 em datacenters é bloqueado na hora
+        'source_address': '0.0.0.0',
+        'socket_timeout': 30,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     }
-    if opts['cookiefile']:
-        logger.info("🍪 Cookies detectados e aplicados.")
+    
+    if os.path.exists("cookies.txt"):
+        opts['cookiefile'] = "cookies.txt"
+        logger.info("🍪 COOKIES CARREGADOS")
+    
     return opts
 
-# MODELOS DE DADOS
 class VideoInfoRequest(BaseModel):
     url: str
 
 class VideoDownloadRequest(BaseModel):
     url: str
-    format_type: str = "mp4" # mp4 ou mp3
+    format_type: str = "mp4"
 
 app = FastAPI()
 
-# Permite que o seu index.html fale com a API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -65,54 +65,49 @@ app.add_middleware(
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
-    p = Path("index.html")
-    return p.read_text(encoding="utf-8") if p.exists() else "API Online"
+    path = Path("index.html")
+    return path.read_text(encoding="utf-8") if path.exists() else "V-ENGINE ONLINE"
 
-# 1. ROTA DE ANÁLISE (Suporta milhares de sites)
 @app.post("/api/info")
 async def get_info(request: VideoInfoRequest):
     opts = get_base_ydl_opts()
-    # 'extract_flat' agiliza a análise e evita erros de formato inicial
-    opts.update({'extract_flat': False, 'skip_download': True})
+    # TRUQUE FINAL: 'extract_flat' e desativar busca de formatos complexos
+    opts.update({
+        'extract_flat': 'in_playlist',
+        'force_generic_extractor': False,
+    })
     
     with yt_dlp.YoutubeDL(opts) as ydl:
         try:
             url = request.url.strip()
-            info = ydl.extract_info(url, download=False)
+            # Pede apenas os metadados básicos sem processar o vídeo
+            info = ydl.extract_info(url, download=False, process=False)
             
             return {
-                "title": info.get('title', 'Vídeo sem título'),
+                "title": info.get('title', 'Vídeo'),
                 "duration_seconds": int(info.get('duration') or 0),
                 "thumbnail_url": info.get('thumbnail', ''),
-                "uploader": info.get('uploader', info.get('webpage_url_domain', 'Desconhecido')),
-                "formats": [] 
+                "uploader": info.get('uploader', 'Canal'),
+                "formats": []
             }
         except Exception as e:
-            logger.error(f"Erro na análise: {e}")
-            raise HTTPException(status_code=400, detail="Não foi possível analisar este link. Verifique se o vídeo é público.")
+            logger.error(f"ERRO INFO: {e}")
+            raise HTTPException(status_code=400, detail="O YouTube bloqueou a requisição. Tente novamente.")
 
-# 2. ROTA DE DOWNLOAD (Conversão automática para MP4/MP3)
 @app.post("/api/download")
 async def download(request: VideoDownloadRequest, bg: BackgroundTasks):
     unique_id = uuid.uuid4().hex[:8]
     opts = get_base_ydl_opts()
     opts['outtmpl'] = str(TEMP_DIR / f"dl_{unique_id}_%(id)s.%(ext)s")
     
-    # Configura o formato baseado na escolha do usuário
     if request.format_type == "mp3":
         opts.update({
             'format': 'bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }]
+            'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
         })
     else:
-        # Tenta pegar o melhor MP4 ou converte se for outro formato (como MKV/WebM)
         opts.update({
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}]
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
         })
 
     with yt_dlp.YoutubeDL(opts) as ydl:
@@ -120,41 +115,29 @@ async def download(request: VideoDownloadRequest, bg: BackgroundTasks):
             info = ydl.extract_info(request.url.strip(), download=True)
             temp_file = Path(ydl.prepare_filename(info))
             
-            # Ajusta extensão se o post-processor mudou (ex: de .webm para .mp4 ou .mp3)
             if request.format_type == "mp3":
                 temp_file = temp_file.with_suffix(".mp3")
-            elif not temp_file.exists():
-                temp_file = temp_file.with_suffix(".mp4")
             
-            final_name = f"vengine_{uuid.uuid4().hex[:6]}{temp_file.suffix}"
+            final_name = f"v_{uuid.uuid4().hex[:6]}{temp_file.suffix}"
             final_path = DOWNLOAD_DIR / final_name
             
-            # Move para a pasta de downloads final
             if temp_file.exists():
                 shutil.move(str(temp_file), str(final_path))
-            else:
-                # Busca fallback caso o nome tenha mudado drasticamente
-                search = list(TEMP_DIR.glob(f"dl_{unique_id}*"))
-                if search: shutil.move(str(search[0]), str(final_path))
-                else: raise Exception("Arquivo não encontrado após processamento.")
-
-            return {
-                "status": "success", 
-                "download_url": f"/api/file/{final_name}?title={sanitize_filename(info.get('title','video'))}"
-            }
+                return {
+                    "status": "success",
+                    "download_url": f"/api/file/{final_name}?title={sanitize_filename(info.get('title','video'))}"
+                }
+            raise Exception("Erro ao localizar arquivo.")
         except Exception as e:
-            logger.error(f"Erro no download: {e}")
-            raise HTTPException(status_code=500, detail="Erro ao processar vídeo. Tente uma qualidade menor.")
+            logger.error(f"ERRO DOWNLOAD: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
-# 3. ROTA DE ENTREGA DO ARQUIVO
 @app.get("/api/file/{filename}")
 async def get_file(filename: str, title: Optional[str] = "video"):
     p = DOWNLOAD_DIR / filename
-    if not p.exists():
-        raise HTTPException(404, "O link de download expirou.")
+    if not p.exists(): raise HTTPException(404)
     return FileResponse(p, media_type="application/octet-stream", filename=f"{title}{p.suffix}")
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
