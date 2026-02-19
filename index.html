@@ -160,6 +160,24 @@
             </div>
         </div>
 
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="glass p-5 rounded-2xl border-t-2 border-sky-500/50">
+                <i class="fa-solid fa-mobile-screen-button text-sky-400 mb-3 text-xl"></i>
+                <h4 class="font-bold text-sm mb-1">PWA Ready</h4>
+                <p class="text-xs text-slate-400">Instale no seu celular para baixar vídeos sem abrir o navegador.</p>
+            </div>
+            <div class="glass p-5 rounded-2xl border-t-2 border-purple-500/50">
+                <i class="fa-solid fa-bolt text-purple-400 mb-3 text-xl"></i>
+                <h4 class="font-bold text-sm mb-1">Super Veloz</h4>
+                <p class="text-xs text-slate-400">Processamento em nuvem otimizado para redes sociais.</p>
+            </div>
+            <div class="glass p-5 rounded-2xl border-t-2 border-emerald-500/50">
+                <i class="fa-solid fa-clock-rotate-left text-emerald-400 mb-3 text-xl"></i>
+                <h4 class="font-bold text-sm mb-1">Limpeza Automática</h4>
+                <p class="text-xs text-slate-400">Arquivos são deletados após 30min para sua segurança.</p>
+            </div>
+        </div>
+
         <div class="glass rounded-3xl p-6 mt-12 border-t-4 border-amber-500 relative overflow-hidden">
             <div class="flex flex-col md:flex-row items-center justify-between gap-6">
                 <div class="flex items-center gap-4 text-center md:text-left">
@@ -231,6 +249,11 @@
             };
         });
 
+        function shareLink(url) {
+            navigator.clipboard.writeText(url);
+            notify("Link direto copiado! (Válido por 30min)", "success");
+        }
+
         document.getElementById('btn-info').onclick = async () => {
             const url = document.getElementById('video-url').value;
             if(!url) return notify("Cole uma URL primeiro", "error");
@@ -271,7 +294,7 @@
             progArea.classList.remove('hidden');
             progBar.style.width = '0%';
             progPercent.innerText = '0%';
-            progStatus.innerText = "Solicitando ao servidor...";
+            progStatus.innerText = "Iniciando...";
 
             try {
                 const res = await fetch(`${API_URL}/download`, {
@@ -284,7 +307,6 @@
                 if(!res.ok) throw new Error(data.detail || "Erro no processamento");
                 
                 const downloadId = data.download_id;
-                progStatus.innerText = "Iniciando processamento...";
 
                 if(progressInterval) clearInterval(progressInterval);
                 
@@ -296,22 +318,28 @@
                         const p = Math.round(progData.progress || 0);
                         progBar.style.width = p + '%';
                         progPercent.innerText = p + '%';
-                        progStatus.innerText = p < 100 ? "Baixando mídia..." : "Preparando arquivo...";
+                        progStatus.innerText = p < 100 ? "Baixando mídia..." : "Finalizando arquivo...";
 
                         if (progData.download_url) {
                             clearInterval(progressInterval);
-                            progStatus.innerText = "Finalizado!";
-                            notify("Download concluído!", "success");
+                            const finalLink = `${API_BASE}${progData.download_url}`;
                             
-                            // Dispara o download real
+                            progStatus.innerHTML = `
+                                <button onclick="shareLink('${finalLink}')" class="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-lg text-[10px] hover:bg-emerald-500/40 transition-all font-bold">
+                                    <i class="fa-solid fa-share-nodes mr-1"></i> COMPARTILHAR LINK
+                                </button>
+                            `;
+                            
+                            notify("Download pronto!", "success");
+                            
                             const a = document.createElement('a');
-                            a.href = `${API_BASE}${progData.download_url}`;
+                            a.href = finalLink;
                             document.body.appendChild(a);
                             a.click();
                             document.body.removeChild(a);
                         }
                     } catch (e) {
-                        console.error("Erro no polling de progresso");
+                        console.error("Erro no polling");
                     }
                 }, 1500);
 
