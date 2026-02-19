@@ -61,16 +61,19 @@ async def startup_event():
 
 # --- FUNÇÕES DE SUPORTE ---
 def progress_hook(d):
+    # Recupera o ID do download através do nome do arquivo temporário se não estiver no info_dict
     download_id = d.get('info_dict', {}).get('v_engine_id')
-    if not download_id: return
+    
     if d['status'] == 'downloading':
         try:
             p = d.get('_percent_str', '0%')
             p_clean = re.sub(r'\x1b\[[0-9;]*m', '', p).replace('%', '').strip()
-            progress_db[download_id] = float(p_clean)
+            if download_id:
+                progress_db[download_id] = float(p_clean)
         except: pass
     elif d['status'] == 'finished':
-        progress_db[download_id] = 100.0
+        if download_id:
+            progress_db[download_id] = 100.0
 
 def task_download_video(download_id: str, url: str, format_type: str):
     base_name = f"v_{download_id}"
@@ -80,7 +83,6 @@ def task_download_video(download_id: str, url: str, format_type: str):
         'nocheckcertificate': True,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'progress_hooks': [progress_hook],
-        'v_engine_id': download_id,
         'outtmpl': str(TEMP_DIR / f"{base_name}_%(id)s.%(ext)s")
     }
     
@@ -98,18 +100,22 @@ def task_download_video(download_id: str, url: str, format_type: str):
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            info['v_engine_id'] = download_id
+            info['v_engine_id'] = download_id # Vincula o ID à extração
             ydl.process_info(info)
             
-            for _ in range(10):
+            # Busca o arquivo gerado
+            for _ in range(15):
                 files = list(TEMP_DIR.glob(f"{base_name}*"))
-                media_files = [f for f in files if f.suffix.lower() in ['.mp3', '.mp4', '.webm', '.mkv']]
+                media_files = [f for f in files if f.suffix.lower() in ['.mp3', '.mp4', '.webm', '.mkv', '.m4a']]
                 if media_files:
                     temp_file = media_files[0]
-                    final_name = f"final_{download_id}{temp_file.suffix}"
+                    final_ext = ".mp3" if format_type == "mp3" else temp_file.suffix
+                    final_name = f"final_{download_id}{final_ext}"
                     shutil.move(str(temp_file), str(DOWNLOAD_DIR / final_name))
-                    title = re.sub(r'[^\w\s-]', '', info.get('title', 'video'))
-                    results_db[download_id] = f"/api/file/{final_name}?title={title}"
+                    
+                    # Salva o link de download
+                    results_db[download_id] = f"/api/file/{final_name}"
+                    progress_db[download_id] = 100.0
                     return
                 time.sleep(2)
     except Exception as e:
@@ -117,12 +123,17 @@ def task_download_video(download_id: str, url: str, format_type: str):
         progress_db[download_id] = -1
 
 # --- ROTAS DA API ---
+
+@app.get("/api/health") # <-- ESSENCIAL PARA O FRONTEND FUNCIONAR
+async def health_check():
+    return {"status": "online", "timestamp": time.time()}
+
 @app.get("/")
 async def serve_index():
     index_path = BASE_DIR / "index.html"
     if index_path.exists():
         return HTMLResponse(index_path.read_text(encoding="utf-8"))
-    return {"message": "API rodando, mas index.html não foi encontrado."}
+    return {"message": "V-Engine Online. index.html não encontrado."}
 
 @app.get("/api/progress/{download_id}")
 async def get_progress(download_id: str):
@@ -138,38 +149,33 @@ class DownloadRequest(BaseModel):
 @app.post("/api/download")
 async def start_download(request: DownloadRequest, background_tasks: BackgroundTasks):
     u_id = uuid.uuid4().hex[:8]
-    progress_db[u_id] = 0.1
+    progress_db[u_id] = 1.0 # Inicia com 1% para feedback visual
     background_tasks.add_task(task_download_video, u_id, request.url, request.format_type)
     return {"download_id": u_id}
 
 @app.get("/api/file/{filename}")
-async def get_file(filename: str, title: str = "video"):
+async def get_file(filename: str):
     file_path = DOWNLOAD_DIR / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
-    return FileResponse(file_path, filename=f"{title}{file_path.suffix}")
+    return FileResponse(file_path)
 
 @app.post("/api/info")
 async def get_info(request: DownloadRequest):
-    opts = {'quiet': True, 'no_warnings': True}
+    opts = {'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
     if os.path.exists("cookies.txt"): opts['cookiefile'] = "cookies.txt"
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            # Extração de dados com segurança
             info = ydl.extract_info(request.url, download=False)
-            
-            # Pega a duração em segundos (ou 0 se não encontrar)
-            duration_seconds = info.get('duration', 0)
-            
             return {
                 "title": info.get('title', 'Video'),
                 "thumbnail_url": info.get('thumbnail', ''),
                 "uploader": info.get('uploader', 'User'),
-                "duration": int(duration_seconds) if duration_seconds else 0 # <- NOVO
+                "duration": int(info.get('duration', 0))
             }
     except Exception as e:
         logger.error(f"Erro ao buscar info: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Não foi possível analisar este link.")
 
 if __name__ == "__main__":
     import uvicorn
