@@ -39,23 +39,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- SISTEMA DE LIMPEZA AUTOMÁTICA (NOVO) ---
+# --- SISTEMA DE LIMPEZA AUTOMÁTICA ---
 async def auto_cleaner():
     """Remove arquivos com mais de 30 minutos para economizar espaço no Render"""
     while True:
         try:
             current_time = time.time()
-            # Limpa as duas pastas: downloads e temp
             for folder in [DOWNLOAD_DIR, TEMP_DIR]:
                 for file_path in folder.glob("*"):
-                    # 1800 segundos = 30 minutos
                     if file_path.is_file() and (current_time - file_path.stat().st_mtime) > 1800:
                         file_path.unlink()
                         logger.info(f"Auto-Cleaner: Removido {file_path.name}")
         except Exception as e:
             logger.error(f"Erro no Auto-Cleaner: {e}")
         
-        await asyncio.sleep(600) # Roda a cada 10 minutos
+        await asyncio.sleep(600) 
 
 @app.on_event("startup")
 async def startup_event():
@@ -126,10 +124,6 @@ async def serve_index():
         return HTMLResponse(index_path.read_text(encoding="utf-8"))
     return {"message": "API rodando, mas index.html não foi encontrado."}
 
-@app.get("/api/health")
-async def health():
-    return {"status": "ok"}
-
 @app.get("/api/progress/{download_id}")
 async def get_progress(download_id: str):
     return {
@@ -161,13 +155,20 @@ async def get_info(request: DownloadRequest):
     if os.path.exists("cookies.txt"): opts['cookiefile'] = "cookies.txt"
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
+            # Extração de dados com segurança
             info = ydl.extract_info(request.url, download=False)
+            
+            # Pega a duração em segundos (ou 0 se não encontrar)
+            duration_seconds = info.get('duration', 0)
+            
             return {
                 "title": info.get('title', 'Video'),
                 "thumbnail_url": info.get('thumbnail', ''),
-                "uploader": info.get('uploader', 'User')
+                "uploader": info.get('uploader', 'User'),
+                "duration": int(duration_seconds) if duration_seconds else 0 # <- NOVO
             }
     except Exception as e:
+        logger.error(f"Erro ao buscar info: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 if __name__ == "__main__":
