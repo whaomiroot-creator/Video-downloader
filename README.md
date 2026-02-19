@@ -47,7 +47,7 @@ python --version
 
 ```bash
 # Clonar/preparar
-git clone https://seu-repo.git
+git clone https://github.com/whaomiroot-creator/Video-downloader.git
 cd video-downloader
 
 # Virtual environment
