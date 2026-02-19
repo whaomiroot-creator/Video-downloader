@@ -20,7 +20,6 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Diretórios com caminhos absolutos para evitar erro 404 no Render
 BASE_DIR = Path(__file__).resolve().parent
 DOWNLOAD_DIR = BASE_DIR / "downloads"
 TEMP_DIR = BASE_DIR / "temp"
@@ -33,13 +32,34 @@ results_db: Dict[str, str] = {}
 
 app = FastAPI()
 
-# Middleware CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- SISTEMA DE LIMPEZA AUTOMÁTICA (NOVO) ---
+async def auto_cleaner():
+    """Remove arquivos com mais de 30 minutos para economizar espaço no Render"""
+    while True:
+        try:
+            current_time = time.time()
+            # Limpa as duas pastas: downloads e temp
+            for folder in [DOWNLOAD_DIR, TEMP_DIR]:
+                for file_path in folder.glob("*"):
+                    # 1800 segundos = 30 minutos
+                    if file_path.is_file() and (current_time - file_path.stat().st_mtime) > 1800:
+                        file_path.unlink()
+                        logger.info(f"Auto-Cleaner: Removido {file_path.name}")
+        except Exception as e:
+            logger.error(f"Erro no Auto-Cleaner: {e}")
+        
+        await asyncio.sleep(600) # Roda a cada 10 minutos
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(auto_cleaner())
 
 # --- FUNÇÕES DE SUPORTE ---
 def progress_hook(d):
@@ -83,7 +103,6 @@ def task_download_video(download_id: str, url: str, format_type: str):
             info['v_engine_id'] = download_id
             ydl.process_info(info)
             
-            # Busca o arquivo gerado
             for _ in range(10):
                 files = list(TEMP_DIR.glob(f"{base_name}*"))
                 media_files = [f for f in files if f.suffix.lower() in ['.mp3', '.mp4', '.webm', '.mkv']]
@@ -100,13 +119,12 @@ def task_download_video(download_id: str, url: str, format_type: str):
         progress_db[download_id] = -1
 
 # --- ROTAS DA API ---
-
 @app.get("/")
 async def serve_index():
     index_path = BASE_DIR / "index.html"
     if index_path.exists():
         return HTMLResponse(index_path.read_text(encoding="utf-8"))
-    return {"message": "API rodando, mas index.html não foi encontrado na raiz."}
+    return {"message": "API rodando, mas index.html não foi encontrado."}
 
 @app.get("/api/health")
 async def health():
