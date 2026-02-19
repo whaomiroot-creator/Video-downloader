@@ -73,7 +73,6 @@
         }
         .btn-paste:hover { background: rgba(56, 189, 248, 0.25); }
 
-        /* Estilo da Barra de Progresso */
         .progress-glow {
             box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
         }
@@ -264,8 +263,6 @@
 
         document.getElementById('btn-download').onclick = async () => {
             const url = document.getElementById('video-url').value;
-            
-            // Resetar e mostrar barra de progresso
             const progArea = document.getElementById('progress-area');
             const progBar = document.getElementById('prog-bar');
             const progPercent = document.getElementById('prog-percent');
@@ -287,30 +284,36 @@
                 if(!res.ok) throw new Error(data.detail || "Erro no processamento");
                 
                 const downloadId = data.download_id;
-                progStatus.innerText = currentFormat === 'mp3' ? "Convertendo para Áudio..." : "Baixando Mídia...";
+                progStatus.innerText = "Iniciando processamento...";
 
-                // Lógica de Polling do Progresso
                 if(progressInterval) clearInterval(progressInterval);
                 
                 progressInterval = setInterval(async () => {
                     try {
                         const progRes = await fetch(`${API_URL}/progress/${downloadId}`);
                         const progData = await progRes.json();
-                        const p = Math.round(progData.progress);
                         
+                        const p = Math.round(progData.progress || 0);
                         progBar.style.width = p + '%';
                         progPercent.innerText = p + '%';
+                        progStatus.innerText = p < 100 ? "Baixando mídia..." : "Preparando arquivo...";
 
-                        if(p >= 100) {
+                        if (progData.download_url) {
                             clearInterval(progressInterval);
                             progStatus.innerText = "Finalizado!";
                             notify("Download concluído!", "success");
-                            window.location.href = `${API_BASE}${data.download_url}`;
+                            
+                            // Dispara o download real
+                            const a = document.createElement('a');
+                            a.href = `${API_BASE}${progData.download_url}`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
                         }
                     } catch (e) {
-                        console.error("Erro ao checar progresso");
+                        console.error("Erro no polling de progresso");
                     }
-                }, 1000);
+                }, 1500);
 
             } catch (err) {
                 notify(err.message, "error");
