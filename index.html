@@ -89,7 +89,7 @@
         </div>
         <div id="api-status" class="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] md:text-xs font-bold flex items-center gap-2">
             <span id="status-dot" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
-            <span id="status-text" class="hidden sm:inline">VERIFICANDO API</span>
+            <span id="status-text">VERIFICANDO API</span>
         </div>
     </nav>
 
@@ -210,7 +210,7 @@
         let currentFormat = 'mp4';
         let progressInterval = null;
 
-        // Função para formatar segundos em MM:SS
+        // Formatação de Tempo
         function formatDuration(seconds) {
             if (!seconds || isNaN(seconds)) return "Indisponível";
             const mins = Math.floor(seconds / 60);
@@ -218,6 +218,7 @@
             return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
 
+        // Colar da área de transferência
         async function pasteClipboard() {
             try {
                 const text = await navigator.clipboard.readText();
@@ -228,27 +229,44 @@
             }
         }
 
+        // Notificações
         function notify(msg, type = 'info') {
             const div = document.createElement('div');
-            div.className = `p-4 rounded-xl font-bold text-sm shadow-2xl glass border-l-4 ${type === 'error' ? 'border-red-500' : 'border-sky-500'} transition-all duration-300 animate-bounce`;
+            div.className = `p-4 rounded-xl font-bold text-sm shadow-2xl glass border-l-4 ${type === 'error' ? 'border-red-500' : 'border-sky-500'} transition-all duration-300 transform scale-100`;
             div.innerText = msg;
             document.getElementById('notif-container').appendChild(div);
-            setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 4000);
+            setTimeout(() => { 
+                div.style.opacity = '0'; 
+                div.style.transform = 'translateY(20px)';
+                setTimeout(() => div.remove(), 300); 
+            }, 4000);
         }
 
+        // VERIFICAÇÃO DE API RESILIENTE
         async function checkAPI() {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+
             try {
-                const res = await fetch(`${API_URL}/health`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const res = await fetch(`${API_URL}/health`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 if(res.ok) {
-                    document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500";
-                    document.getElementById('status-text').innerText = "API ONLINE";
+                    dot.className = "w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+                    text.innerText = "SISTEMA ONLINE";
+                } else {
+                    throw new Error();
                 }
             } catch {
-                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-red-500";
-                document.getElementById('status-text').innerText = "API OFFLINE";
+                dot.className = "w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444]";
+                text.innerText = "API INDISPONÍVEL";
             }
         }
 
+        // Seleção de Formato
         document.querySelectorAll('.format-btn').forEach(btn => {
             btn.onclick = () => {
                 document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
@@ -257,16 +275,18 @@
             };
         });
 
+        // Copiar Link Gerado
         function shareLink(url) {
             navigator.clipboard.writeText(url);
-            notify("Link direto copiado! (Válido por 30min)", "success");
+            notify("Link direto copiado!", "success");
         }
 
+        // Analisar Vídeo
         document.getElementById('btn-info').onclick = async () => {
-            const url = document.getElementById('video-url').value;
+            const url = document.getElementById('video-url').value.trim();
             if(!url) return notify("Cole uma URL primeiro", "error");
             
-            showLoading("Analisando vídeo", "Conectando ao servidor...");
+            showLoading("Analisando vídeo", "Extraindo metadados...");
             document.getElementById('progress-area').classList.add('hidden');
 
             try {
@@ -281,9 +301,7 @@
                 
                 document.getElementById('v-thumb').src = data.thumbnail_url;
                 document.getElementById('v-title').innerText = data.title;
-                document.getElementById('v-uploader').innerText = data.uploader;
-                
-                // CORREÇÃO DA DURAÇÃO AQUI
+                document.getElementById('v-uploader').innerText = data.uploader || "Desconhecido";
                 document.getElementById('v-duration').innerText = formatDuration(data.duration);
                 
                 document.getElementById('video-card').classList.remove('hidden');
@@ -296,8 +314,9 @@
             }
         };
 
+        // Download e Polling de Progresso
         document.getElementById('btn-download').onclick = async () => {
-            const url = document.getElementById('video-url').value;
+            const url = document.getElementById('video-url').value.trim();
             const progArea = document.getElementById('progress-area');
             const progBar = document.getElementById('prog-bar');
             const progPercent = document.getElementById('prog-percent');
@@ -319,15 +338,16 @@
                 if(!res.ok) throw new Error(data.detail || "Erro no processamento");
                 
                 const downloadId = data.download_id;
-
                 if(progressInterval) clearInterval(progressInterval);
                 
                 progressInterval = setInterval(async () => {
                     try {
                         const progRes = await fetch(`${API_URL}/progress/${downloadId}`);
-                        const progData = await progRes.json();
+                        if(!progRes.ok) return;
                         
+                        const progData = await progRes.json();
                         const p = Math.round(progData.progress || 0);
+                        
                         progBar.style.width = p + '%';
                         progPercent.innerText = p + '%';
                         progStatus.innerText = p < 100 ? "Baixando mídia..." : "Finalizando arquivo...";
@@ -343,12 +363,7 @@
                             `;
                             
                             notify("Download pronto!", "success");
-                            
-                            const a = document.createElement('a');
-                            a.href = finalLink;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
+                            window.location.href = finalLink;
                         }
                     } catch (e) {
                         console.error("Erro no polling");
@@ -376,7 +391,10 @@
             notify("Chave PIX copiada! ☕️", "success");
         }
 
+        // Iniciar verificação
         checkAPI();
+        // Re-verificar a cada 30 segundos
+        setInterval(checkAPI, 30000);
     </script>
 </body>
 </html>
