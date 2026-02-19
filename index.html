@@ -210,6 +210,14 @@
         let currentFormat = 'mp4';
         let progressInterval = null;
 
+        // Função para formatar segundos em MM:SS
+        function formatDuration(seconds) {
+            if (!seconds || isNaN(seconds)) return "Indisponível";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
         async function pasteClipboard() {
             try {
                 const text = await navigator.clipboard.readText();
@@ -267,13 +275,17 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({url})
                 });
-                if(!res.ok) throw new Error("Link inválido ou não suportado");
                 
                 const data = await res.json();
+                if(!res.ok) throw new Error(data.detail || "Link inválido ou não suportado");
+                
                 document.getElementById('v-thumb').src = data.thumbnail_url;
                 document.getElementById('v-title').innerText = data.title;
                 document.getElementById('v-uploader').innerText = data.uploader;
-                document.getElementById('v-duration').innerText = Math.floor(data.duration_seconds/60) + ' min';
+                
+                // CORREÇÃO DA DURAÇÃO AQUI
+                document.getElementById('v-duration').innerText = formatDuration(data.duration);
+                
                 document.getElementById('video-card').classList.remove('hidden');
                 document.getElementById('btn-download').disabled = false;
                 notify("Vídeo analisado!", "success");
